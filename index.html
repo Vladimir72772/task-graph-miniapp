@@ -67,6 +67,7 @@ label{font-size:12px;color:var(--mut);display:flex;flex-direction:column;gap:4px
   <div class="page" id="p-fin"></div>
   <div class="page" id="p-rem"></div>
   <div class="page" id="p-task"></div>
+  <div class="page" id="p-view"></div>
 </div>
 <div class="send"><button id="send">Записать</button><div class="status" id="status"></div></div>
 <div class="sheet" id="sheet"><div id="sheetBody"></div></div>
@@ -95,8 +96,9 @@ let state = { ...DEFAULT_STATE, ...ls.get('tgm-state', {}) };
 let cfg = ls.get('tgm-cfg', { repo: '', token: '' });
 let queue = ls.get('tgm-queue', []);
 let hist = ls.get('tgm-hist', []);
-const TYPES = [['act', '⏱', 'Действие'], ['fin', '💰', 'Финансы'], ['rem', '⏰', 'Напоминание'], ['task', '📌', 'Задача']];
+const TYPES = [['act', '⏱', 'Действие'], ['fin', '💰', 'Финансы'], ['rem', '⏰', 'Напоминание'], ['task', '📌', 'Задача'], ['view', '📊', 'Обзор']];
 let tab = 'act';
+let full = ls.get('tgm-data', null); let viewTab = 'day';
 const now = () => new Date();
 const F = {
   act: { category: null, newCat: '', mode: 'now', from: '', to: '', timer: 0, note: '' },
@@ -136,7 +138,11 @@ async function flush() {
   flushing = false; render.status();
 }
 let lastErr = '';
+async function pullData() {
+  try { const r = await gh('data.json', { raw: true, cache: 'no-store' }); if (r.status === 404) return; full = await r.json(); ls.set('tgm-data', full); render.view(); } catch (e) { lastErr = String(e.message || e); render.status(); }
+}
 async function pull() {
+  pullData();
   if (!configured()) return;
   try { const r = await gh('state.json', { raw: true, cache: 'no-store' }); if (r.status === 404) return; const s = await r.json();
     // Сводка с компьютера старше того, что вы сами записали с телефона (компьютер выключен или ещё не забрал записи): своё не затираем.
@@ -255,6 +261,54 @@ const render = {
     const k = ['tTitle', 'tTag'].map((id) => [id, keep(id)]); $('p-task').replaceChildren(...kids.flat().filter(Boolean)); k.forEach(([id, s]) => refocus(id, s));
   },
 };
+render.view = function () {
+  const el = $('p-view'); const kids = []; const today = dkey(now());
+  const seg = h('div', { class: 'seg' }, [['day', 'День'], ['money', 'Траты'], ['tasks', 'Задачи'], ['rem', 'Напоминания']].map(([k, l]) => h('button', { class: viewTab === k ? 'on' : '', onclick: () => { viewTab = k; render.view(); } }, l)));
+  kids.push(seg);
+  const pend = queue.filter((e) => e.kind !== 'resolve');
+  if (pend.length) kids.push(h('div', { class: 'conf' }, h('b', {}, `Ждут компьютер: ${pend.length}`), h('div', { class: 'hist' }, pend.slice(-6).map((e) => h('div', {}, `${hm(new Date(e.ts))} · ${asText(e) || e.kind}`)))));
+  if (!full) { kids.push(h('div', { class: 'mut' }, configured() ? 'Копии данных в репозитории пока нет. Она появится, когда программа на компьютере свяжется с репозиторием.' : 'Подключите репозиторий в настройках внизу.')); el.replaceChildren(...kids); return; }
+  const tr = full.tracker || {}; const d = tr.data || {}; const se = tr.settings || {}; const cats = se.categories || []; const fcats = se.finCategories || [];
+  const cat = (id) => cats.find((c) => c.id === id) || { label: id, color: '#94a3b8' }; const fcat = (id) => fcats.find((c) => c.id === id) || { label: id, color: '#94a3b8' };
+  const rub = (n) => `${Math.round(n).toLocaleString('ru-RU')} ₽`;
+  kids.push(h('div', { class: 'mut', style: 'font-size:12px' }, `Копия с компьютера на ${new Date(full.exportedAt).toLocaleString('ru-RU', { day: '2-digit', month: '2-digit', hour: '2-digit', minute: '2-digit' })}`));
+  const bar = (items) => h('div', { style: 'display:flex;height:14px;border-radius:7px;overflow:hidden;background:var(--bg3)' }, items.map(([v, c]) => h('div', { style: `flex:${v};background:${c}` })));
+  const row = (left, right, color) => h('div', { class: 'row', style: 'gap:8px;padding:5px 0;border-bottom:1px solid var(--line)' }, color ? h('span', { class: 'dot', style: `width:10px;height:10px;border-radius:50%;flex:none;background:${color}` }) : null, h('span', { style: 'flex:1;min-width:0' }, left), h('b', { style: 'flex:none;font-size:14px' }, right));
+  if (viewTab === 'day') {
+    const a = new Date(today + 'T00:00:00').getTime(), b = a + 864e5, t = Date.now();
+    const list = (d.entries || []).map((e) => ({ ...e, s: Math.max(a, Date.parse(e.start)), f: Math.min(b, t, e.end ? Date.parse(e.end) : t) })).filter((e) => e.f > e.s).sort((x, y) => x.s - y.s);
+    const by = {}; for (const e of list) by[e.category] = (by[e.category] || 0) + (e.f - e.s) / 6e4;
+    const total = Object.values(by).reduce((x, y) => x + y, 0);
+    kids.push(h('div', { class: 'sec' }, `Сегодня записано ${dur(total)}`), bar(Object.entries(by).sort((x, y) => y[1] - x[1]).map(([c, m]) => [m, cat(c).color])));
+    for (const [c, m] of Object.entries(by).sort((x, y) => y[1] - x[1])) kids.push(row(cat(c).label, dur(m), cat(c).color));
+    kids.push(h('div', { class: 'sec' }, 'По часам'));
+    for (const e of list) kids.push(row(`${hm(new Date(e.s))}–${e.end ? hm(new Date(e.f)) : 'сейчас'} ${e.activity || cat(e.category).label}`, dur((e.f - e.s) / 6e4), cat(e.category).color));
+    if (!list.length) kids.push(h('div', { class: 'mut' }, 'За сегодня записей нет.'));
+  } else if (viewTab === 'money') {
+    const ex = d.expenses || []; const wd = (new Date().getDay() + 6) % 7; const mon = addDays(today, -wd); const m1 = today.slice(0, 8) + '01';
+    const sum = (f) => ex.filter(f).reduce((x, e) => x + e.amount, 0);
+    kids.push(h('div', { class: 'row' }, ...[['сегодня', sum((e) => e.date === today)], ['неделя', sum((e) => e.date >= mon)], ['месяц', sum((e) => e.date >= m1)]].map(([l, v]) => h('div', { class: 'now', style: 'padding:9px;text-align:center' }, h('b', { style: 'font-size:17px' }, rub(v)), h('span', { class: 'mut', style: 'font-size:12px' }, l)))));
+    const by = {}; for (const e of ex.filter((e) => e.date >= m1)) by[e.category] = (by[e.category] || 0) + e.amount;
+    kids.push(h('div', { class: 'sec' }, 'Месяц по категориям'), bar(Object.entries(by).sort((x, y) => y[1] - x[1]).map(([c, v]) => [v, fcat(c).color])));
+    for (const [c, v] of Object.entries(by).sort((x, y) => y[1] - x[1])) { const bm = fcat(c).budgetMonth; kids.push(row(fcat(c).label + (bm ? ` · из ${rub(bm)}` : ''), rub(v), fcat(c).color)); }
+    kids.push(h('div', { class: 'sec' }, 'Последние траты'));
+    for (const e of [...ex].sort((x, y) => (y.date + y.ts).localeCompare(x.date + x.ts)).slice(0, 15)) kids.push(row(`${dm(e.date)} ${e.note || fcat(e.category).label}`, rub(e.amount), fcat(e.category).color));
+  } else if (viewTab === 'tasks') {
+    const ts = ((full.graph || {}).tasks || []).filter((x) => x.status !== 'done' && !x.archived);
+    const kidsOf = new Set(ts.map((x) => x.parentId).filter(Boolean)); const leaf = ts.filter((x) => !kidsOf.has(x.id) || x.deadline);
+    const withD = leaf.filter((x) => x.deadline).sort((x, y) => (x.deadline + (x.dueTime || '')).localeCompare(y.deadline + (y.dueTime || '')));
+    const left = (k) => Math.round((new Date(k + 'T00:00:00') - new Date(today + 'T00:00:00')) / 864e5);
+    kids.push(h('div', { class: 'sec' }, 'Со сроком'));
+    for (const x of withD) { const n = left(x.deadline); kids.push(row(x.title, `${n < 0 ? 'просрочено' : n === 0 ? 'сегодня' : n === 1 ? 'завтра' : dm(x.deadline)}${x.dueTime ? ' ' + x.dueTime : ''}`, n < 0 ? 'var(--red)' : n <= 1 ? 'var(--org)' : 'var(--acc)')); }
+    if (!withD.length) kids.push(h('div', { class: 'mut' }, 'Задач со сроком нет.'));
+    const rest = leaf.filter((x) => !x.deadline).slice(0, 25); if (rest.length) { kids.push(h('div', { class: 'sec' }, 'Без срока')); for (const x of rest) kids.push(row(x.title, x.status === 'doing' ? 'в работе' : '', null)); }
+  } else {
+    const rs = (d.reminders || []).filter((r) => !r.fired && Date.parse(r.at) > Date.now() - 36e5).sort((x, y) => x.at.localeCompare(y.at));
+    for (const r of rs) kids.push(row(r.text, `${dkey(new Date(r.at)) === today ? 'сегодня' : dm(dkey(new Date(r.at)))} ${hm(new Date(r.at))}`, 'var(--acc)'));
+    if (!rs.length) kids.push(h('div', { class: 'mut' }, 'Ближайших напоминаний нет. Напоминания о задачах со сроком программа присылает сама.'));
+  }
+  el.replaceChildren(...kids.flat().filter(Boolean));
+};
 function addTag() { const f = F.task; const v = f.newTag.trim().replace(/^#/, '').toLowerCase(); if (!v) return; f.newTag = ''; if (!f.tags.includes(v)) f.tags.push(v); render.task(); }
 const dur = (min) => { const m = Math.max(0, Math.round(min)); return m < 60 ? `${m} мин` : `${Math.floor(m / 60)} ч${m % 60 ? ' ' + (m % 60) + ' мин' : ''}`; };
 function quick(mode, label) { push({ kind: 'activity', mode, category: (state.current || state.paused || {}).category, label: (state.current || state.paused || {}).label }, label); if (mode === 'stop' || mode === 'pause') { state.paused = mode === 'pause' ? state.current : null; state.current = null; } else if (mode === 'resume') { state.current = { ...state.paused, start: now().toISOString() }; state.paused = null; } state.localAt = now().toISOString(); ls.set('tgm-state', state); renderAll(); }
@@ -276,7 +330,7 @@ function draft() {
   const when = f.mode === 'none' ? '' : f.mode === 'window' ? ` · ${dm(f.date)} ${f.from}–${f.to}` : ` · ${f.mode === 'due' ? 'к' : 'в'} ${dm(f.date)}${f.time ? ' ' + f.time : ''}`;
   return { ev: { kind: 'task', title: f.title.trim(), timeMode: f.mode, ...(f.mode !== 'none' ? { date: f.date } : {}), ...(f.mode === 'window' ? { from: f.from, to: f.to } : f.time && f.mode !== 'none' ? { time: f.time } : {}), tags: f.tags, project: f.project, ...(f.estimate ? { estimateMin: f.estimate } : {}) }, text: f.title.trim() + when, btn: 'Создать задачу' + when };
 }
-function sync() { const d = draft(); const b = $('send'); b.disabled = !d; b.textContent = d ? d.btn : { act: 'Выберите занятие', fin: 'Введите сумму', rem: 'Текст и время напоминания', task: 'Напишите задачу' }[tab]; }
+function sync() { document.querySelector('.send button').style.display = tab === 'view' ? 'none' : ''; const d = tab === 'view' ? null : draft(); const b = $('send'); b.disabled = !d; b.textContent = d ? d.btn : { act: 'Выберите занятие', fin: 'Введите сумму', rem: 'Текст и время напоминания', task: 'Напишите задачу' }[tab]; }
 $('send').addEventListener('click', () => { const d = draft(); if (!d) return; push(d.ev, d.text);
   if (tab === 'act') { const f = F.act; if (d.ev.mode !== 'range') { state.current = { category: d.ev.category, label: d.ev.label, start: d.ev.mode === 'since' ? new Date(`${dkey(now())}T${f.from}:00`).toISOString() : now().toISOString(), ...(d.ev.timerMin ? { until: new Date(Date.now() + d.ev.timerMin * 60000).toISOString() } : {}) }; state.paused = null; state.localAt = now().toISOString(); ls.set('tgm-state', state); } Object.assign(f, { category: null, newCat: '', mode: 'now', from: '', to: '', timer: 0, note: '' }); }
   else if (tab === 'fin') Object.assign(F.fin, { amount: '', newCat: '', note: '' });
@@ -284,7 +338,7 @@ $('send').addEventListener('click', () => { const d = draft(); if (!d) return; p
   else Object.assign(F.task, { title: '', time: '', from: '', to: '', tags: [], estimate: 0 });
   renderAll(); });
 
-function renderAll() { render.wheel(); render.act(); render.fin(); render.rem(); render.task(); render.status(); sync(); }
+function renderAll() { render.wheel(); render.act(); render.fin(); render.rem(); render.task(); render.view(); render.status(); sync(); }
 function go(id, smooth = true) { tab = id; const i = TYPES.findIndex((t) => t[0] === id); const pg = $('pages'); pg.scrollTo({ left: i * pg.clientWidth, behavior: smooth ? 'smooth' : 'auto' }); render.wheel(); sync(); const b = document.querySelector(`.wheel [data-tab=${id}]`); if (b && b.scrollIntoView) b.scrollIntoView({ inline: 'center', block: 'nearest', behavior: 'smooth' }); haptic(); }
 let st = 0; $('pages').addEventListener('scroll', () => { clearTimeout(st); st = setTimeout(() => { const pg = $('pages'); const i = Math.round(pg.scrollLeft / pg.clientWidth); const id = TYPES[i] && TYPES[i][0]; if (id && id !== tab) { tab = id; render.wheel(); sync(); haptic(); } }, 80); });
 
