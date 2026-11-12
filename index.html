@@ -138,7 +138,10 @@ async function flush() {
 let lastErr = '';
 async function pull() {
   if (!configured()) return;
-  try { const r = await gh('state.json', { raw: true, cache: 'no-store' }); if (r.status === 404) return; const s = await r.json(); state = { ...DEFAULT_STATE, ...s }; ls.set('tgm-state', state); renderAll(); } catch (e) { lastErr = String(e.message || e); render.status(); }
+  try { const r = await gh('state.json', { raw: true, cache: 'no-store' }); if (r.status === 404) return; const s = await r.json();
+    // Сводка с компьютера старше того, что вы сами записали с телефона (компьютер выключен или ещё не забрал записи): своё не затираем.
+    const mine = state.localAt && (!s.updatedAt || s.updatedAt < state.localAt) ? { current: state.current, paused: state.paused, localAt: state.localAt } : {};
+    state = { ...DEFAULT_STATE, ...s, ...mine }; ls.set('tgm-state', state); renderAll(); } catch (e) { lastErr = String(e.message || e); render.status(); }
 }
 
 /* ---------- запись ---------- */
@@ -199,7 +202,7 @@ const render = {
     const f = F.act; const cur = state.current; const kids = [];
     for (const c of state.conflicts || []) kids.push(h('div', { class: 'conf' }, h('b', {}, 'Записи расходятся'), h('div', {}, c.text || `На ${c.when || 'одно время'} в телефоне и на компьютере разные записи. Какую оставить?`),
       h('div', { class: 'row' }, h('button', { class: 'btn', onclick: () => resolve(c, 'phone') }, '📱 ' + (c.phone || 'из телефона')), h('button', { class: 'btn', onclick: () => resolve(c, 'pc') }, '💻 ' + (c.pc || 'с компьютера')))));
-    if (cur) kids.push(h('div', { class: 'now' }, h('span', { class: 'mut' }, `Сейчас · с ${hm(new Date(cur.start))}${cur.until ? ` · до ${hm(new Date(cur.until))}` : ''}`), h('b', {}, `${cur.label} — ${dur((Date.now() - Date.parse(cur.start)) / 60000)}`),
+    if (cur) kids.push(h('div', { class: 'now' }, h('span', { class: 'mut' }, `${state.localAt && (!state.updatedAt || state.updatedAt < state.localAt) ? 'Записано с телефона' : 'Сейчас'} · с ${hm(new Date(cur.start))}${cur.until ? ` · до ${hm(new Date(cur.until))}` : ''}`), h('b', {}, `${cur.label} — ${dur((Date.now() - Date.parse(cur.start)) / 60000)}`),
       h('div', { class: 'acts' }, h('button', { class: 'btn pri', onclick: () => quick('stop', 'Закончил: ' + cur.label) }, '■ Закончить'), h('button', { class: 'btn', onclick: () => quick('pause', 'Пауза: ' + cur.label) }, '⏸ Пауза'),
         [10, 30].map((m) => h('button', { class: 'btn', onclick: () => push({ kind: 'activity', mode: 'extend', timerMin: m, category: cur.category, label: cur.label }, `${cur.label}: ещё ${m} мин`) }, `ещё ${m} мин`)))));
     else if (state.paused) kids.push(h('div', { class: 'now' }, h('span', { class: 'mut' }, 'На паузе'), h('b', {}, '⏸ ' + state.paused.label), h('div', { class: 'acts' }, h('button', { class: 'btn pri', onclick: () => quick('resume', 'Продолжил: ' + state.paused.label) }, '▶ Продолжить'))));
@@ -254,7 +257,7 @@ const render = {
 };
 function addTag() { const f = F.task; const v = f.newTag.trim().replace(/^#/, '').toLowerCase(); if (!v) return; f.newTag = ''; if (!f.tags.includes(v)) f.tags.push(v); render.task(); }
 const dur = (min) => { const m = Math.max(0, Math.round(min)); return m < 60 ? `${m} мин` : `${Math.floor(m / 60)} ч${m % 60 ? ' ' + (m % 60) + ' мин' : ''}`; };
-function quick(mode, label) { push({ kind: 'activity', mode, category: (state.current || state.paused || {}).category, label: (state.current || state.paused || {}).label }, label); if (mode === 'stop' || mode === 'pause') { state.paused = mode === 'pause' ? state.current : null; state.current = null; } else if (mode === 'resume') { state.current = { ...state.paused, start: now().toISOString() }; state.paused = null; } ls.set('tgm-state', state); renderAll(); }
+function quick(mode, label) { push({ kind: 'activity', mode, category: (state.current || state.paused || {}).category, label: (state.current || state.paused || {}).label }, label); if (mode === 'stop' || mode === 'pause') { state.paused = mode === 'pause' ? state.current : null; state.current = null; } else if (mode === 'resume') { state.current = { ...state.paused, start: now().toISOString() }; state.paused = null; } state.localAt = now().toISOString(); ls.set('tgm-state', state); renderAll(); }
 function resolve(c, choice) { push({ kind: 'resolve', conflict: c.id, choice }, `Выбрано: ${choice === 'phone' ? 'из телефона' : 'с компьютера'}`); state.conflicts = state.conflicts.filter((x) => x.id !== c.id); ls.set('tgm-state', state); renderAll(); }
 
 /* что будет записано и можно ли записывать */
@@ -275,7 +278,7 @@ function draft() {
 }
 function sync() { const d = draft(); const b = $('send'); b.disabled = !d; b.textContent = d ? d.btn : { act: 'Выберите занятие', fin: 'Введите сумму', rem: 'Текст и время напоминания', task: 'Напишите задачу' }[tab]; }
 $('send').addEventListener('click', () => { const d = draft(); if (!d) return; push(d.ev, d.text);
-  if (tab === 'act') { const f = F.act; if (d.ev.mode !== 'range') { state.current = { category: d.ev.category, label: d.ev.label, start: d.ev.mode === 'since' ? new Date(`${dkey(now())}T${f.from}:00`).toISOString() : now().toISOString(), ...(d.ev.timerMin ? { until: new Date(Date.now() + d.ev.timerMin * 60000).toISOString() } : {}) }; state.paused = null; ls.set('tgm-state', state); } Object.assign(f, { category: null, newCat: '', mode: 'now', from: '', to: '', timer: 0, note: '' }); }
+  if (tab === 'act') { const f = F.act; if (d.ev.mode !== 'range') { state.current = { category: d.ev.category, label: d.ev.label, start: d.ev.mode === 'since' ? new Date(`${dkey(now())}T${f.from}:00`).toISOString() : now().toISOString(), ...(d.ev.timerMin ? { until: new Date(Date.now() + d.ev.timerMin * 60000).toISOString() } : {}) }; state.paused = null; state.localAt = now().toISOString(); ls.set('tgm-state', state); } Object.assign(f, { category: null, newCat: '', mode: 'now', from: '', to: '', timer: 0, note: '' }); }
   else if (tab === 'fin') Object.assign(F.fin, { amount: '', newCat: '', note: '' });
   else if (tab === 'rem') Object.assign(F.rem, { text: '', time: '' });
   else Object.assign(F.task, { title: '', time: '', from: '', to: '', tags: [], estimate: 0 });
