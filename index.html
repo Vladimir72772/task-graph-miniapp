@@ -1,0 +1,305 @@
+<!doctype html>
+<html lang="ru">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,maximum-scale=1,user-scalable=no,viewport-fit=cover">
+<title>Граф задач</title>
+<script src="https://telegram.org/js/telegram-web-app.js"></script>
+<style>
+:root{--bg:#14151c;--bg2:#1b1d27;--bg3:#232634;--line:#2e3243;--tx:#e6e9f2;--mut:#8b93a7;--acc:#a78bfa;--green:#3ecf8e;--red:#ef6a6a;--org:#fb923c;color-scheme:dark}
+*{box-sizing:border-box;-webkit-tap-highlight-color:transparent}
+html,body{margin:0;height:100%}
+body{background:var(--bg);color:var(--tx);font:16px/1.35 -apple-system,"Segoe UI",Roboto,system-ui,sans-serif;display:flex;flex-direction:column;overflow:hidden}
+button,input,textarea,select{font:inherit;color:inherit}
+input,textarea{background:var(--bg2);border:1px solid var(--line);border-radius:10px;padding:10px 12px;width:100%;min-width:0}
+input:focus,textarea:focus{outline:none;border-color:var(--acc)}
+/* колесо типов */
+.wheel{display:flex;gap:8px;padding:10px 12px 8px;overflow-x:auto;scroll-snap-type:x mandatory;scrollbar-width:none;flex:none}
+.wheel::-webkit-scrollbar{display:none}
+.wheel button{flex:1 0 auto;scroll-snap-align:center;background:var(--bg2);border:1px solid var(--line);border-radius:14px;padding:9px 14px;color:var(--mut);display:flex;flex-direction:column;align-items:center;gap:2px;font-size:13px;min-width:78px}
+.wheel button i{font-style:normal;font-size:20px}
+.wheel button.on{background:var(--acc);border-color:var(--acc);color:#14151c;font-weight:700}
+.pages{flex:1;display:flex;overflow-x:auto;scroll-snap-type:x mandatory;scrollbar-width:none}
+.pages::-webkit-scrollbar{display:none}
+.page{flex:0 0 100%;scroll-snap-align:start;overflow-y:auto;padding:4px 12px 96px;display:flex;flex-direction:column;gap:10px}
+.sec{font-size:11px;text-transform:uppercase;letter-spacing:.06em;color:var(--mut);margin-top:4px}
+.chips{display:flex;flex-wrap:wrap;gap:7px}
+.chip{background:var(--bg2);border:1px solid var(--line);border-radius:999px;padding:8px 13px;font-size:15px;color:var(--tx);display:flex;align-items:center;gap:6px}
+.chip.on{background:var(--acc);border-color:var(--acc);color:#14151c;font-weight:600}
+.chip .dot{width:10px;height:10px;border-radius:50%}
+.chip.sm{padding:6px 11px;font-size:14px}
+.now{background:linear-gradient(135deg,#2a2350,#1b1d27);border:1px solid #4a3f7a;border-radius:14px;padding:12px}
+.now b{font-size:19px;display:block}.now .mut{font-size:13px}
+.now .acts{display:flex;gap:7px;margin-top:10px;flex-wrap:wrap}
+.btn{background:var(--bg3);border:1px solid var(--line);border-radius:10px;padding:9px 13px;font-size:15px}
+.btn.pri{background:var(--acc);border-color:var(--acc);color:#14151c;font-weight:700}
+.btn.red{color:var(--red)}
+.mut{color:var(--mut)}
+.row{display:flex;gap:8px;align-items:center}
+.row>*{flex:1}
+.seg{display:flex;background:var(--bg2);border:1px solid var(--line);border-radius:12px;padding:3px;gap:3px}
+.seg button{flex:1;border:0;background:none;border-radius:9px;padding:8px 4px;font-size:14px;color:var(--mut)}
+.seg button.on{background:var(--bg3);color:var(--tx);font-weight:600}
+.amount{font-size:44px;font-weight:700;text-align:center;padding:6px 0 0;font-variant-numeric:tabular-nums}
+.amount small{font-size:22px;color:var(--mut)}
+.pad{display:grid;grid-template-columns:repeat(3,1fr);gap:7px}
+.pad button{background:var(--bg2);border:1px solid var(--line);border-radius:12px;padding:12px 0;font-size:21px}
+.pad button:active,.chip:active,.btn:active{filter:brightness(1.3)}
+.send{position:fixed;left:0;right:0;bottom:0;padding:10px 12px calc(10px + env(safe-area-inset-bottom));background:linear-gradient(transparent,var(--bg) 30%);display:flex;flex-direction:column;gap:6px}
+.send button{width:100%;background:var(--acc);border:0;border-radius:14px;padding:14px;font-size:17px;font-weight:700;color:#14151c}
+.send button:disabled{opacity:.4}
+.status{font-size:12px;color:var(--mut);text-align:center;display:flex;justify-content:center;gap:10px}
+.status a{color:var(--acc)}
+.toast{position:fixed;left:12px;right:12px;top:10px;background:#1f2a22;border:1px solid var(--green);border-radius:12px;padding:10px 12px;font-size:14px;z-index:9;display:none}
+.toast.err{background:#2c1c1c;border-color:var(--red)}
+.conf{background:#fb923c1f;border:1px solid #fb923c88;border-radius:14px;padding:12px;display:flex;flex-direction:column;gap:8px}
+.sheet{position:fixed;inset:0;background:#000a;display:none;align-items:flex-end;z-index:8}
+.sheet>div{background:var(--bg2);border-radius:18px 18px 0 0;padding:16px 14px calc(16px + env(safe-area-inset-bottom));width:100%;display:flex;flex-direction:column;gap:10px;max-height:88%;overflow:auto}
+.hist{font-size:13px;color:var(--mut);display:flex;flex-direction:column;gap:3px}
+label{font-size:12px;color:var(--mut);display:flex;flex-direction:column;gap:4px}
+</style>
+</head>
+<body>
+<div class="toast" id="toast"></div>
+<div class="wheel" id="wheel"></div>
+<div class="pages" id="pages">
+  <div class="page" id="p-act"></div>
+  <div class="page" id="p-fin"></div>
+  <div class="page" id="p-rem"></div>
+  <div class="page" id="p-task"></div>
+</div>
+<div class="send"><button id="send">Записать</button><div class="status" id="status"></div></div>
+<div class="sheet" id="sheet"><div id="sheetBody"></div></div>
+<script>
+'use strict';
+/* Мини-приложение «Граф задач». Записи складываются в очередь на телефоне и уходят в закрытый репозиторий GitHub
+   (папка inbox, по файлу на запись). Программа на компьютере забирает их и удаляет. Без настроенного репозитория
+   запись можно отправить текстом в чат. */
+const tg = window.Telegram && window.Telegram.WebApp && window.Telegram.WebApp.initData !== undefined ? window.Telegram.WebApp : null;
+const $ = (id) => document.getElementById(id);
+const h = (tag, attrs, ...kids) => { const e = document.createElement(tag); for (const [k, v] of Object.entries(attrs || {})) { if (k === 'class') e.className = v; else if (k.startsWith('on')) e.addEventListener(k.slice(2), v); else if (v !== false && v != null) e.setAttribute(k, v === true ? '' : v); } for (const c of kids.flat()) if (c != null && c !== false) e.append(c.nodeType ? c : document.createTextNode(String(c))); return e; };
+const p2 = (n) => String(n).padStart(2, '0');
+const hm = (d) => `${p2(d.getHours())}:${p2(d.getMinutes())}`;
+const dkey = (d) => `${d.getFullYear()}-${p2(d.getMonth() + 1)}-${p2(d.getDate())}`;
+const addDays = (k, n) => { const d = new Date(k + 'T00:00:00'); d.setDate(d.getDate() + n); return dkey(d); };
+const dm = (k) => `${k.slice(8, 10)}.${k.slice(5, 7)}`;
+const ls = { get(k, d) { try { const v = localStorage.getItem(k); return v ? JSON.parse(v) : d; } catch { return d; } }, set(k, v) { try { localStorage.setItem(k, JSON.stringify(v)); } catch { /* */ } } };
+const haptic = (t) => { try { tg && tg.HapticFeedback && tg.HapticFeedback.impactOccurred(t || 'light'); } catch { /* */ } };
+
+const DEFAULT_STATE = {
+  categories: [['study', 'Учёба', '#4c9aff'], ['work', 'Работа', '#38bdf8'], ['sport', 'Спорт', '#3ecf8e'], ['food', 'Еда', '#fb923c'], ['chores', 'Быт', '#a3a3a3'], ['commute', 'Дорога', '#facc15'], ['rest', 'Отдых', '#c084fc'], ['social', 'Соцсети', '#f472b6'], ['sleep', 'Сон', '#6366f1']].map(([id, label, color]) => ({ id, label, color })),
+  finCategories: [['food', 'Еда', '#fb923c'], ['transport', 'Транспорт', '#facc15'], ['home', 'Дом', '#a3a3a3'], ['fun', 'Развлечения', '#f472b6'], ['study', 'Учёба', '#4c9aff'], ['health', 'Здоровье', '#3ecf8e'], ['other', 'Другое', '#94a3b8']].map(([id, label, color]) => ({ id, label, color })),
+  tags: [], projects: [], current: null, paused: null, conflicts: [], updatedAt: null,
+};
+let state = { ...DEFAULT_STATE, ...ls.get('tgm-state', {}) };
+let cfg = ls.get('tgm-cfg', { repo: '', token: '' });
+let queue = ls.get('tgm-queue', []);
+let hist = ls.get('tgm-hist', []);
+const TYPES = [['act', '⏱', 'Действие'], ['fin', '💰', 'Финансы'], ['rem', '⏰', 'Напоминание'], ['task', '📌', 'Задача']];
+let tab = 'act';
+const now = () => new Date();
+const F = {
+  act: { category: null, newCat: '', mode: 'now', from: '', to: '', timer: 0, note: '' },
+  fin: { amount: '', category: null, newCat: '', note: '' },
+  rem: { text: '', date: dkey(now()), time: '' },
+  task: { title: '', mode: 'none', date: dkey(now()), time: '', from: '', to: '', tags: [], newTag: '', project: null, estimate: 0, list: true },
+};
+
+/* ---------- хранилище настроек: облако Telegram, иначе память телефона ---------- */
+function cloudGet(key) { return new Promise((res) => { try { if (tg && tg.CloudStorage && tg.isVersionAtLeast && tg.isVersionAtLeast('6.9')) return tg.CloudStorage.getItem(key, (e, v) => res(e ? null : v || null)); } catch { /* */ } res(null); }); }
+function cloudSet(key, v) { try { if (tg && tg.CloudStorage && tg.isVersionAtLeast && tg.isVersionAtLeast('6.9')) tg.CloudStorage.setItem(key, v); } catch { /* */ } }
+
+/* ---------- GitHub ---------- */
+const gh = async (path, opt = {}) => {
+  const r = await fetch(`https://api.github.com/repos/${cfg.repo}/contents/${path}`, { ...opt, headers: { Authorization: `Bearer ${cfg.token}`, Accept: opt.raw ? 'application/vnd.github.raw+json' : 'application/vnd.github+json', 'X-GitHub-Api-Version': '2022-11-28', ...(opt.headers || {}) } });
+  if (!r.ok && r.status !== 404) throw new Error(r.status === 401 ? 'GitHub не принял токен' : r.status === 403 ? 'у токена нет доступа к репозиторию' : `GitHub ответил ${r.status}`);
+  return r;
+};
+const b64 = (s) => btoa(String.fromCharCode(...new TextEncoder().encode(s)));
+const configured = () => /^[\w.-]+\/[\w.-]+$/.test(cfg.repo) && cfg.token.length > 10;
+let flushing = false;
+async function flush() {
+  if (flushing || !configured() || !queue.length) return render.status();
+  flushing = true; render.status();
+  try {
+    while (queue.length) {
+      const ev = queue[0];
+      const r = await gh(`inbox/${ev.id}.json`, { method: 'PUT', body: JSON.stringify({ message: 'запись из мини-приложения', content: b64(JSON.stringify(ev)) }) });
+      if (r.status === 404) throw new Error('репозиторий не найден');
+      queue.shift(); ls.set('tgm-queue', queue);
+    }
+    lastErr = '';
+  } catch (e) { lastErr = String(e.message || e); }
+  flushing = false; render.status();
+}
+let lastErr = '';
+async function pull() {
+  if (!configured()) return;
+  try { const r = await gh('state.json', { raw: true, cache: 'no-store' }); if (r.status === 404) return; const s = await r.json(); state = { ...DEFAULT_STATE, ...s }; ls.set('tgm-state', state); renderAll(); } catch (e) { lastErr = String(e.message || e); render.status(); }
+}
+
+/* ---------- запись ---------- */
+const uid = () => `${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 8)}`;
+function push(ev, label) {
+  const e = { id: uid(), ts: now().toISOString(), v: 1, ...ev };
+  queue.push(e); ls.set('tgm-queue', queue);
+  hist.unshift({ ts: e.ts, label }); hist = hist.slice(0, 12); ls.set('tgm-hist', hist);
+  haptic('medium'); toast('✓ ' + label);
+  if (!configured()) offerText(e); else flush();
+  renderAll();
+}
+/** Та же запись словами, как её понимает бот: запасной путь через чат. */
+function asText(e) {
+  const t = (x) => (x || '').replace(':', '.');
+  if (e.kind === 'activity') {
+    const c = e.label; const n = e.note ? ' ' + e.note : '';
+    if (e.mode === 'stop') return 'стоп'; if (e.mode === 'pause') return 'пауза'; if (e.mode === 'resume') return 'продолжить';
+    if (e.mode === 'extend') return `ещё ${e.timerMin}`;
+    if (e.mode === 'range') return `${c}${n} ${e.from}-${e.to}`;
+    if (e.mode === 'since') return `${c}${n} с ${t(e.from)}${e.timerMin ? `, ещё ${e.timerMin} минут` : ''}`;
+    return `${c}${n} начал${e.timerMin ? ` ${e.timerMin} минут` : ''}`;
+  }
+  if (e.kind === 'expense') return `ф ${e.amount} ${[e.categoryLabel, e.note].filter(Boolean).join(' ')}`.trim();
+  if (e.kind === 'reminder') return `н ${e.text} д ${dm(e.date)} в ${t(e.time)}`;
+  if (e.kind === 'task') return `з ${e.title}${e.date ? ` к д ${dm(e.date)}` : ''}${e.time ? ` в${t(e.time)}` : ''}`;
+  return '';
+}
+function offerText(e) {
+  const text = asText(e); if (!text) return;
+  sheet([h('b', {}, 'Репозиторий не подключён'), h('div', { class: 'mut' }, 'Запись сохранена на телефоне и уйдёт, когда вы подключите репозиторий в настройках. Сейчас её можно отправить текстом в чат с ботом:'),
+    h('input', { value: text, readonly: true, id: 'txt' }),
+    h('div', { class: 'row' }, h('button', { class: 'btn pri', onclick: () => { const url = 'https://t.me/share/url?url=' + encodeURIComponent(text); if (tg) tg.openTelegramLink(url); else window.open(url); } }, 'Отправить в чат'),
+      h('button', { class: 'btn', onclick: () => { queue = queue.filter((x) => x.id !== e.id); ls.set('tgm-queue', queue); closeSheet(); renderAll(); } }, 'Убрать из очереди'), h('button', { class: 'btn', onclick: closeSheet }, 'Оставить'))]);
+}
+
+/* ---------- интерфейс ---------- */
+function toast(t, err) { const e = $('toast'); e.textContent = t; e.className = 'toast' + (err ? ' err' : ''); e.style.display = 'block'; clearTimeout(toast.t); toast.t = setTimeout(() => { e.style.display = 'none'; }, 2200); }
+function sheet(kids) { const b = $('sheetBody'); b.replaceChildren(...kids.flat().filter(Boolean)); $('sheet').style.display = 'flex'; }
+function closeSheet() { $('sheet').style.display = 'none'; }
+$('sheet').addEventListener('click', (e) => { if (e.target.id === 'sheet') closeSheet(); });
+const chip = (label, on, onclick, extra) => h('button', { class: 'chip' + (on ? ' on' : '') + (extra && extra.sm ? ' sm' : ''), onclick: () => { haptic(); onclick(); } }, extra && extra.color ? h('span', { class: 'dot', style: `background:${extra.color}` }) : null, label);
+const timeChips = (cur, set, list) => h('div', { class: 'chips' }, list.map(([l, v]) => chip(l, cur === v, () => set(v), { sm: true })));
+const ago = (min) => hm(new Date(Date.now() - min * 60000));
+const ahead = (min) => hm(new Date(Date.now() + min * 60000));
+const keep = (id) => { const a = document.activeElement; return a && a.id === id ? [a.selectionStart, a.selectionEnd] : null; };
+const refocus = (id, sel) => { if (!sel) return; const e = $(id); if (e) { e.focus(); try { e.setSelectionRange(sel[0], sel[1]); } catch { /* */ } } };
+
+const render = {
+  wheel() { $('wheel').replaceChildren(...TYPES.map(([id, ic, label]) => h('button', { class: tab === id ? 'on' : '', 'data-tab': id, onclick: () => go(id) }, h('i', {}, ic), label))); },
+  status() {
+    const s = $('status'); const parts = [];
+    if (!configured()) parts.push('репозиторий не подключён'); else if (flushing) parts.push('отправляю…'); else if (lastErr) parts.push('⚠ ' + lastErr); else parts.push(queue.length ? `в очереди: ${queue.length}` : 'всё отправлено');
+    if (configured() && queue.length && !flushing) parts.push(`в очереди: ${queue.length}`);
+    s.replaceChildren(h('span', {}, [...new Set(parts)].join(' · ')), h('a', { onclick: settings, id: 'cfgLink' }, 'настройки'));
+  },
+  act() {
+    const f = F.act; const cur = state.current; const kids = [];
+    for (const c of state.conflicts || []) kids.push(h('div', { class: 'conf' }, h('b', {}, 'Записи расходятся'), h('div', {}, c.text || `На ${c.when || 'одно время'} в телефоне и на компьютере разные записи. Какую оставить?`),
+      h('div', { class: 'row' }, h('button', { class: 'btn', onclick: () => resolve(c, 'phone') }, '📱 ' + (c.phone || 'из телефона')), h('button', { class: 'btn', onclick: () => resolve(c, 'pc') }, '💻 ' + (c.pc || 'с компьютера')))));
+    if (cur) kids.push(h('div', { class: 'now' }, h('span', { class: 'mut' }, `Сейчас · с ${hm(new Date(cur.start))}${cur.until ? ` · до ${hm(new Date(cur.until))}` : ''}`), h('b', {}, `${cur.label} — ${dur((Date.now() - Date.parse(cur.start)) / 60000)}`),
+      h('div', { class: 'acts' }, h('button', { class: 'btn pri', onclick: () => quick('stop', 'Закончил: ' + cur.label) }, '■ Закончить'), h('button', { class: 'btn', onclick: () => quick('pause', 'Пауза: ' + cur.label) }, '⏸ Пауза'),
+        [10, 30].map((m) => h('button', { class: 'btn', onclick: () => push({ kind: 'activity', mode: 'extend', timerMin: m, category: cur.category, label: cur.label }, `${cur.label}: ещё ${m} мин`) }, `ещё ${m} мин`)))));
+    else if (state.paused) kids.push(h('div', { class: 'now' }, h('span', { class: 'mut' }, 'На паузе'), h('b', {}, '⏸ ' + state.paused.label), h('div', { class: 'acts' }, h('button', { class: 'btn pri', onclick: () => quick('resume', 'Продолжил: ' + state.paused.label) }, '▶ Продолжить'))));
+    else kids.push(h('div', { class: 'now' }, h('span', { class: 'mut' }, state.updatedAt ? `По данным компьютера на ${hm(new Date(state.updatedAt))}` : 'Данных с компьютера пока нет'), h('b', {}, 'Чем занимаетесь?')));
+    kids.push(h('div', { class: 'sec' }, 'Что'), h('div', { class: 'chips' }, state.categories.map((c) => chip(c.label, f.category === c.id, () => { f.category = c.id; f.newCat = ''; render.act(); sync(); }, { color: c.color }))),
+      h('input', { id: 'newCat', placeholder: 'или новая категория', value: f.newCat, oninput: (e) => { f.newCat = e.target.value; if (f.newCat) f.category = null; sync(); } }));
+    kids.push(h('div', { class: 'sec' }, 'Когда'), h('div', { class: 'seg' }, [['now', 'Сейчас начал'], ['since', 'Уже идёт с…'], ['range', 'Было с… по…']].map(([m, l]) => h('button', { class: f.mode === m ? 'on' : '', onclick: () => { f.mode = m; if (m !== 'now' && !f.from) f.from = ago(30); if (m === 'range' && !f.to) f.to = hm(now()); render.act(); sync(); } }, l))));
+    if (f.mode !== 'now') kids.push(h('div', { class: 'row' }, h('label', {}, 'С', h('input', { type: 'time', id: 'aFrom', value: f.from, oninput: (e) => { f.from = e.target.value; sync(); } })), f.mode === 'range' ? h('label', {}, 'По', h('input', { type: 'time', id: 'aTo', value: f.to, oninput: (e) => { f.to = e.target.value; sync(); } })) : null),
+      timeChips(f.from, (v) => { f.from = v; render.act(); sync(); }, [[5, '5 мин назад'], [15, '15 мин'], [30, '30 мин'], [60, 'час'], [120, '2 часа']].map(([m, l]) => [l, ago(m)])),
+      f.mode === 'range' ? timeChips(f.to, (v) => { f.to = v; render.act(); sync(); }, [['закончил сейчас', hm(now())], ['5 мин назад', ago(5)], ['15 мин назад', ago(15)]]) : null);
+    if (f.mode !== 'range') kids.push(h('div', { class: 'sec' }, f.mode === 'now' ? 'Таймер: сколько буду заниматься' : 'Таймер: сколько ещё'), h('div', { class: 'chips' }, [[0, 'без таймера'], [10, '10 мин'], [15, '15'], [25, '25'], [30, '30'], [45, '45'], [60, '1 ч'], [90, '1,5 ч']].map(([m, l]) => chip(l, f.timer === m, () => { f.timer = m; render.act(); sync(); }, { sm: true }))));
+    kids.push(h('input', { id: 'aNote', placeholder: 'уточнение: что именно (необязательно)', value: f.note, oninput: (e) => { f.note = e.target.value; } }));
+    if (hist.length) kids.push(h('div', { class: 'sec' }, 'Недавно записано'), h('div', { class: 'hist' }, hist.slice(0, 5).map((x) => h('div', {}, `${hm(new Date(x.ts))} · ${x.label}`))));
+    const k = ['newCat', 'aNote'].map((id) => [id, keep(id)]); $('p-act').replaceChildren(...kids.flat().filter(Boolean)); k.forEach(([id, s]) => refocus(id, s));
+  },
+  fin() {
+    const f = F.fin; const add = (n) => { f.amount = String((parseFloat(f.amount.replace(',', '.')) || 0) + n); render.fin(); sync(); };
+    const key = (d) => { if (d === '⌫') f.amount = f.amount.slice(0, -1); else if (d === ',') { if (!f.amount.includes(',')) f.amount = (f.amount || '0') + ','; } else f.amount = (f.amount === '0' ? '' : f.amount) + d; haptic(); render.fin(); sync(); };
+    const kids = [h('div', { class: 'amount', id: 'amount' }, f.amount || '0', h('small', {}, ' ₽')),
+      h('div', { class: 'chips', style: 'justify-content:center' }, [50, 100, 200, 500, 1000].map((n) => chip('+' + n, false, () => add(n), { sm: true })), chip('+10', false, () => add(10), { sm: true }), chip('сброс', false, () => { f.amount = ''; render.fin(); sync(); }, { sm: true })),
+      h('div', { class: 'sec' }, 'Категория'), h('div', { class: 'chips' }, state.finCategories.map((c) => chip(c.label, f.category === c.id, () => { f.category = c.id; f.newCat = ''; render.fin(); sync(); }, { color: c.color }))),
+      h('div', { class: 'row' }, h('input', { id: 'fNew', placeholder: 'новая категория', value: f.newCat, oninput: (e) => { f.newCat = e.target.value; if (f.newCat) f.category = null; sync(); } }), h('input', { id: 'fNote', placeholder: 'на что', value: f.note, oninput: (e) => { f.note = e.target.value; } })),
+      h('div', { class: 'pad' }, ['1', '2', '3', '4', '5', '6', '7', '8', '9', ',', '0', '⌫'].map((d) => h('button', { onclick: () => key(d) }, d)))];
+    const k = ['fNew', 'fNote'].map((id) => [id, keep(id)]); $('p-fin').replaceChildren(...kids.flat().filter(Boolean)); k.forEach(([id, s]) => refocus(id, s));
+  },
+  dateChips(f, re) { const t = dkey(now()); return h('div', { class: 'chips' }, [['сегодня', t], ['завтра', addDays(t, 1)], ['послезавтра', addDays(t, 2)], ['через неделю', addDays(t, 7)]].map(([l, v]) => chip(l, f.date === v, () => { f.date = v; re(); sync(); }, { sm: true }))); },
+  rem() {
+    const f = F.rem; const re = render.rem;
+    const kids = [h('input', { id: 'rText', placeholder: 'О чём напомнить', value: f.text, oninput: (e) => { f.text = e.target.value; sync(); } }),
+      h('div', { class: 'sec' }, 'Через'), timeChips(f.time, (v) => { f.time = v; f.date = dkey(new Date(Date.now() + (v < hm(now()) ? 864e5 : 0))); re(); sync(); }, [[10, '10 мин'], [30, '30 мин'], [60, '1 час'], [120, '2 часа'], [180, '3 часа']].map(([m, l]) => [l, ahead(m)])),
+      h('div', { class: 'sec' }, 'Или точно'), render.dateChips(f, re),
+      h('div', { class: 'row' }, h('label', {}, 'Дата', h('input', { type: 'date', id: 'rDate', value: f.date, oninput: (e) => { f.date = e.target.value; sync(); } })), h('label', {}, 'Время', h('input', { type: 'time', id: 'rTime', value: f.time, oninput: (e) => { f.time = e.target.value; sync(); } }))),
+      timeChips(f.time, (v) => { f.time = v; re(); sync(); }, ['08:00', '12:00', '16:00', '18:00', '20:00', '22:00'].map((v) => [v, v])),
+      h('div', { class: 'mut', style: 'font-size:13px' }, 'Напоминание придёт в Telegram и на компьютер, в список дел не попадает.')];
+    const k = [['rText', keep('rText')]]; $('p-rem').replaceChildren(...kids.flat().filter(Boolean)); k.forEach(([id, s]) => refocus(id, s));
+  },
+  task() {
+    const f = F.task; const re = render.task;
+    const kids = [h('input', { id: 'tTitle', placeholder: 'Что сделать', value: f.title, oninput: (e) => { f.title = e.target.value; sync(); } }),
+      h('div', { class: 'sec' }, 'Время'), h('div', { class: 'seg' }, [['none', 'Без срока'], ['due', 'Сдать к'], ['at', 'Ровно в'], ['window', 'Делать с… по…']].map(([m, l]) => h('button', { class: f.mode === m ? 'on' : '', onclick: () => { f.mode = m; re(); sync(); } }, l)))];
+    if (f.mode !== 'none') kids.push(render.dateChips(f, re), h('div', { class: 'row' }, h('label', {}, 'Дата', h('input', { type: 'date', id: 'tDate', value: f.date, oninput: (e) => { f.date = e.target.value; sync(); } })),
+      f.mode === 'window' ? [h('label', {}, 'С', h('input', { type: 'time', id: 'tFrom', value: f.from, oninput: (e) => { f.from = e.target.value; sync(); } })), h('label', {}, 'По', h('input', { type: 'time', id: 'tTo', value: f.to, oninput: (e) => { f.to = e.target.value; sync(); } }))]
+        : h('label', {}, f.mode === 'due' ? 'Время (необязательно)' : 'Время', h('input', { type: 'time', id: 'tTime', value: f.time, oninput: (e) => { f.time = e.target.value; sync(); } }))),
+      f.mode === 'window' ? null : timeChips(f.time, (v) => { f.time = f.time === v ? '' : v; re(); sync(); }, ['09:00', '12:00', '16:00', '18:00', '20:00', '23:59'].map((v) => [v, v])));
+    kids.push(h('div', { class: 'sec' }, 'Сколько займёт'), h('div', { class: 'chips' }, [[0, 'не знаю'], [15, '15 мин'], [30, '30 мин'], [60, '1 ч'], [120, '2 ч'], [240, '4 ч']].map(([m, l]) => chip(l, f.estimate === m, () => { f.estimate = m; re(); }, { sm: true }))));
+    const tags = [...new Set([...(state.tags || []), ...f.tags])];
+    kids.push(h('div', { class: 'sec' }, 'Теги'), h('div', { class: 'chips' }, tags.map((t) => chip('#' + t, f.tags.includes(t), () => { f.tags = f.tags.includes(t) ? f.tags.filter((x) => x !== t) : [...f.tags, t]; re(); }, { sm: true }))),
+      h('input', { id: 'tTag', placeholder: 'новый тег и Enter', value: f.newTag, oninput: (e) => { f.newTag = e.target.value; }, onkeydown: (e) => { if (e.key === 'Enter') addTag(); }, onblur: () => addTag() }));
+    if ((state.projects || []).length) kids.push(h('div', { class: 'sec' }, 'С чем связано'), h('div', { class: 'chips' }, chip('без проекта', !f.project, () => { f.project = null; re(); }, { sm: true }), state.projects.map((p) => chip(p.title, f.project === p.id, () => { f.project = p.id; re(); }, { sm: true }))));
+    const k = ['tTitle', 'tTag'].map((id) => [id, keep(id)]); $('p-task').replaceChildren(...kids.flat().filter(Boolean)); k.forEach(([id, s]) => refocus(id, s));
+  },
+};
+function addTag() { const f = F.task; const v = f.newTag.trim().replace(/^#/, '').toLowerCase(); if (!v) return; f.newTag = ''; if (!f.tags.includes(v)) f.tags.push(v); render.task(); }
+const dur = (min) => { const m = Math.max(0, Math.round(min)); return m < 60 ? `${m} мин` : `${Math.floor(m / 60)} ч${m % 60 ? ' ' + (m % 60) + ' мин' : ''}`; };
+function quick(mode, label) { push({ kind: 'activity', mode, category: (state.current || state.paused || {}).category, label: (state.current || state.paused || {}).label }, label); if (mode === 'stop' || mode === 'pause') { state.paused = mode === 'pause' ? state.current : null; state.current = null; } else if (mode === 'resume') { state.current = { ...state.paused, start: now().toISOString() }; state.paused = null; } ls.set('tgm-state', state); renderAll(); }
+function resolve(c, choice) { push({ kind: 'resolve', conflict: c.id, choice }, `Выбрано: ${choice === 'phone' ? 'из телефона' : 'с компьютера'}`); state.conflicts = state.conflicts.filter((x) => x.id !== c.id); ls.set('tgm-state', state); renderAll(); }
+
+/* что будет записано и можно ли записывать */
+function draft() {
+  if (tab === 'act') { const f = F.act; const cat = state.categories.find((c) => c.id === f.category); const label = cat ? cat.label : f.newCat.trim(); if (!label) return null;
+    if (f.mode === 'range' && (!f.from || !f.to || f.from === f.to)) return null; if (f.mode === 'since' && !f.from) return null;
+    const ev = { kind: 'activity', mode: f.mode, category: cat ? cat.id : null, label, ...(cat ? {} : { newCategory: true }), ...(f.note.trim() ? { note: f.note.trim() } : {}), ...(f.mode !== 'now' ? { from: f.from } : {}), ...(f.mode === 'range' ? { to: f.to } : {}), ...(f.mode !== 'range' && f.timer ? { timerMin: f.timer } : {}) };
+    const text = f.mode === 'range' ? `${label} ${f.from}–${f.to}` : f.mode === 'since' ? `${label} с ${f.from}${f.timer ? `, ещё ${f.timer} мин` : ', идёт'}` : `${label} с этой минуты${f.timer ? ` на ${f.timer} мин` : ''}`;
+    return { ev, text, btn: 'Записать: ' + text }; }
+  if (tab === 'fin') { const f = F.fin; const a = parseFloat(f.amount.replace(',', '.')); if (!(a > 0)) return null; const cat = state.finCategories.find((c) => c.id === f.category); const label = cat ? cat.label : f.newCat.trim();
+    const text = `${a.toLocaleString('ru-RU')} ₽${label ? ' · ' + label : ''}${f.note.trim() ? ' · ' + f.note.trim() : ''}`;
+    return { ev: { kind: 'expense', amount: a, category: cat ? cat.id : null, categoryLabel: label || null, ...(label && !cat ? { newCategory: true } : {}), note: f.note.trim(), date: dkey(now()) }, text, btn: 'Записать трату: ' + text }; }
+  if (tab === 'rem') { const f = F.rem; if (!f.text.trim() || !f.date || !f.time) return null; const text = `${f.text.trim()} · ${f.date === dkey(now()) ? 'сегодня' : dm(f.date)} в ${f.time}`;
+    return { ev: { kind: 'reminder', text: f.text.trim(), date: f.date, time: f.time }, text, btn: 'Напомнить: ' + text }; }
+  const f = F.task; if (!f.title.trim()) return null; if (f.mode === 'at' && !f.time) return null; if (f.mode === 'window' && (!f.from || !f.to)) return null;
+  const when = f.mode === 'none' ? '' : f.mode === 'window' ? ` · ${dm(f.date)} ${f.from}–${f.to}` : ` · ${f.mode === 'due' ? 'к' : 'в'} ${dm(f.date)}${f.time ? ' ' + f.time : ''}`;
+  return { ev: { kind: 'task', title: f.title.trim(), timeMode: f.mode, ...(f.mode !== 'none' ? { date: f.date } : {}), ...(f.mode === 'window' ? { from: f.from, to: f.to } : f.time && f.mode !== 'none' ? { time: f.time } : {}), tags: f.tags, project: f.project, ...(f.estimate ? { estimateMin: f.estimate } : {}) }, text: f.title.trim() + when, btn: 'Создать задачу' + when };
+}
+function sync() { const d = draft(); const b = $('send'); b.disabled = !d; b.textContent = d ? d.btn : { act: 'Выберите занятие', fin: 'Введите сумму', rem: 'Текст и время напоминания', task: 'Напишите задачу' }[tab]; }
+$('send').addEventListener('click', () => { const d = draft(); if (!d) return; push(d.ev, d.text);
+  if (tab === 'act') { const f = F.act; if (d.ev.mode !== 'range') { state.current = { category: d.ev.category, label: d.ev.label, start: d.ev.mode === 'since' ? new Date(`${dkey(now())}T${f.from}:00`).toISOString() : now().toISOString(), ...(d.ev.timerMin ? { until: new Date(Date.now() + d.ev.timerMin * 60000).toISOString() } : {}) }; state.paused = null; ls.set('tgm-state', state); } Object.assign(f, { category: null, newCat: '', mode: 'now', from: '', to: '', timer: 0, note: '' }); }
+  else if (tab === 'fin') Object.assign(F.fin, { amount: '', newCat: '', note: '' });
+  else if (tab === 'rem') Object.assign(F.rem, { text: '', time: '' });
+  else Object.assign(F.task, { title: '', time: '', from: '', to: '', tags: [], estimate: 0 });
+  renderAll(); });
+
+function renderAll() { render.wheel(); render.act(); render.fin(); render.rem(); render.task(); render.status(); sync(); }
+function go(id, smooth = true) { tab = id; const i = TYPES.findIndex((t) => t[0] === id); const pg = $('pages'); pg.scrollTo({ left: i * pg.clientWidth, behavior: smooth ? 'smooth' : 'auto' }); render.wheel(); sync(); const b = document.querySelector(`.wheel [data-tab=${id}]`); if (b && b.scrollIntoView) b.scrollIntoView({ inline: 'center', block: 'nearest', behavior: 'smooth' }); haptic(); }
+let st = 0; $('pages').addEventListener('scroll', () => { clearTimeout(st); st = setTimeout(() => { const pg = $('pages'); const i = Math.round(pg.scrollLeft / pg.clientWidth); const id = TYPES[i] && TYPES[i][0]; if (id && id !== tab) { tab = id; render.wheel(); sync(); haptic(); } }, 80); });
+
+function settings() {
+  const repo = h('input', { id: 'sRepo', placeholder: 'имя/репозиторий', value: cfg.repo, autocapitalize: 'off', autocorrect: 'off' }); const token = h('input', { id: 'sToken', placeholder: 'токен github_pat_…', value: cfg.token, type: 'password', autocapitalize: 'off' });
+  sheet([h('b', {}, 'Подключение к репозиторию'), h('div', { class: 'mut', style: 'font-size:13px' }, 'Закрытый репозиторий, куда складываются записи, и токен с правом записи только в него. Токен хранится в облаке вашего Telegram и на этом телефоне, в коде страницы его нет.'),
+    h('label', {}, 'Репозиторий', repo), h('label', {}, 'Токен', token),
+    h('div', { class: 'row' }, h('button', { class: 'btn pri', id: 'sSave', onclick: async () => { cfg = { repo: repo.value.trim(), token: token.value.trim() }; ls.set('tgm-cfg', cfg); cloudSet('cfg', JSON.stringify(cfg)); closeSheet(); lastErr = ''; render.status(); await flush(); await pull(); toast(lastErr ? '⚠ ' + lastErr : configured() ? 'Подключено ✓' : 'Сохранено', !!lastErr); } }, 'Сохранить'), h('button', { class: 'btn', onclick: closeSheet }, 'Отмена')),
+    queue.length ? h('div', { class: 'mut', style: 'font-size:13px' }, `В очереди на отправку: ${queue.length}.`) : null,
+    queue.length ? h('button', { class: 'btn red', onclick: () => { queue = []; ls.set('tgm-queue', queue); closeSheet(); renderAll(); } }, 'Очистить очередь') : null]);
+}
+
+(async function start() {
+  if (tg) { try { tg.ready(); tg.expand(); tg.setHeaderColor && tg.setHeaderColor('#14151c'); tg.setBackgroundColor && tg.setBackgroundColor('#14151c'); } catch { /* */ } }
+  renderAll(); go('act', false);
+  if (!configured()) { const c = await cloudGet('cfg'); if (c) { try { cfg = JSON.parse(c); ls.set('tgm-cfg', cfg); } catch { /* */ } } }
+  render.status(); await flush(); await pull();
+  setInterval(() => { render.act(); sync(); }, 30000);
+  document.addEventListener('visibilitychange', () => { if (!document.hidden) { flush(); pull(); } });
+  window.addEventListener('online', flush);
+})();
+</script>
+</body>
+</html>
