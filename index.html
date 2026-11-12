@@ -112,7 +112,7 @@ function cloudSet(key, v) { try { if (tg && tg.CloudStorage && tg.isVersionAtLea
 /* ---------- GitHub ---------- */
 const gh = async (path, opt = {}) => {
   const r = await fetch(`https://api.github.com/repos/${cfg.repo}/contents/${path}`, { ...opt, headers: { Authorization: `Bearer ${cfg.token}`, Accept: opt.raw ? 'application/vnd.github.raw+json' : 'application/vnd.github+json', 'X-GitHub-Api-Version': '2022-11-28', ...(opt.headers || {}) } });
-  if (!r.ok && r.status !== 404) throw new Error(r.status === 401 ? 'GitHub не принял токен' : r.status === 403 ? 'у токена нет доступа к репозиторию' : `GitHub ответил ${r.status}`);
+  if (!r.ok && r.status !== 404 && r.status !== 422) throw new Error(r.status === 401 ? 'GitHub не принял токен' : r.status === 403 ? 'у токена нет доступа к репозиторию' : `GitHub ответил ${r.status}`);
   return r;
 };
 const b64 = (s) => btoa(String.fromCharCode(...new TextEncoder().encode(s)));
@@ -124,8 +124,11 @@ async function flush() {
   try {
     while (queue.length) {
       const ev = queue[0];
-      const r = await gh(`inbox/${ev.id}.json`, { method: 'PUT', body: JSON.stringify({ message: 'запись из мини-приложения', content: b64(JSON.stringify(ev)) }) });
+      const path = `inbox/${ev.id}.json`;
+      let r = await gh(path, { method: 'PUT', body: JSON.stringify({ message: 'запись из мини-приложения', content: b64(JSON.stringify(ev)) }) });
       if (r.status === 404) throw new Error('репозиторий не найден');
+      // 422 бывает, когда запись уже дошла, а ответ GitHub потерялся в сети: при повторе файл уже есть.
+      if (r.status === 422) { const chk = await gh(path, { cache: 'no-store' }); if (chk.status !== 200) throw new Error('GitHub отклонил запись (422)'); }
       queue.shift(); ls.set('tgm-queue', queue);
     }
     lastErr = '';
